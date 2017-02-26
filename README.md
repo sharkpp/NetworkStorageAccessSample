@@ -12,7 +12,7 @@ Qt 5.8 にテクノロジープレビューとして追加された [Qt Network 
 
 ## サービスプロバイダ
 
-|ネットワークストレージ|redirect_uri|備考|
-|-|-|-|
-|Dropbox|oob|実装済み|
-|Dropbox|localhost:xxxx|未実装|
+| ネットワークストレージ | redirect_uri | 備考 |
+| ---- | ---- |:---- |
+| Dropbox | oob | 実装済み |
+| Dropbox | localhost:xxxx | 未実装 |
