@@ -8,11 +8,11 @@ Qt 5.8 にテクノロジープレビューとして追加された [Qt Network 
 * トークンの保存＆読込
 * テストファイルアップロード
 
+※ oob = out-of-band 、要するに PIN をアプリケーションに入力する通知方法のこと
+
 ## サービスプロバイダ
 
 |ネットワークストレージ|redirect_uri|備考|
 |-|-|-|
-|Dropbox|oob||
+|Dropbox|oob|実装済み|
 |Dropbox|localhost:xxxx|未実装|
-
-※ oob = out-of-band 、要するに PIN をアプリケーションに入力する通知方法のこと
