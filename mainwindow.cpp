@@ -3,16 +3,27 @@
 #include "oauth2pininputdialog.h"
 #include "dropbox.h"
 #include <QDialogButtonBox>
+#include <QElapsedTimer>
 #include <QDebug>
+#include <random> //
 
 const QString tokenFileName = "NetworkStorageAccessSample.token";
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , currentBenchmarkState(BenchmarkStandby)
+    , benchmarkWorkingTime(new QElapsedTimer())
+    , random10kB(new QByteArray())
     , dropbox(new Dropbox(this))
 {
     ui->setupUi(this);
+
+    std::mt19937 myrand((uint)(QTime::currentTime()).msec());
+    random10kB->fill('*', 10 * 1024);
+    for (int i = 0; i < random10kB->size(); ++i) {
+        (*random10kB)[i] = (qint8)myrand();
+    }
 
     connect(dropbox, &Dropbox::authenticated, [&]() {
         //qDebug() << (int)dropbox->status() << "," << (int)Dropbox::Status::Granted;
@@ -20,17 +31,18 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(dropbox, &Dropbox::uploaded, [&](const QString& path) {
-        appendLog(QString("Dropbox::uploaded >> \"%1\"").arg(path));
-        dropbox->download("/12345.txt");
+        //appendLog(QString("Dropbox::uploaded >> \"%1\"").arg(path));
+        nextBenchmark();
     });
 
     connect(dropbox, &Dropbox::downloaded, [&](const QString& path, const QByteArray& data) {
-        appendLog(QString("Dropbox::downloaded >> \"%1\" -> %2").arg(path).arg(data.size()));
-        dropbox->remove("/12345.txt");
+        //appendLog(QString("Dropbox::downloaded >> \"%1\" -> %2").arg(path).arg(data.size()));
+        nextBenchmark();
     });
 
     connect(dropbox, &Dropbox::removed, [&](const QString& path) {
-        appendLog(QString("Dropbox::removed >> \"%1\"").arg(path));
+        //appendLog(QString("Dropbox::removed >> \"%1\"").arg(path));
+        nextBenchmark();
     });
 
     tokensLoad();
@@ -78,6 +90,69 @@ void MainWindow::appendLog(const QString &newLog)
     ui->log->setPlainText(text + QString(text.isEmpty() ? "%1" : "\n%1").arg(newLog));
 }
 
+void MainWindow::startBenchmark()
+{
+    currentBenchmarkState = BenchmarkDropboxUpload10kFromMemory;
+    processBenchmark();
+}
+
+void MainWindow::nextBenchmark()
+{
+    qint64 t = benchmarkWorkingTime->elapsed();
+    double bytesPerSec = 0;
+    QString benchmarkName;
+
+    switch (currentBenchmarkState)
+    {
+    case BenchmarkDropboxUpload10kFromMemory: {
+        benchmarkName = QString("Dropbox 10kB upload from memory");
+        bytesPerSec = 10.0 * 1024.0 * 1000.0 / (double)t;
+        break; }
+    case BenchmarkDropboxDownload10kFromMemory:
+        benchmarkName = QString("Dropbox 10kB download to memory");
+        bytesPerSec = 10.0 * 1024.0 * 1000.0 / (double)t;
+        break;
+    case BenchmarkDropboxDelete10kFromMemory:
+        benchmarkName = QString("Dropbox 10kB delete");
+        bytesPerSec = 10.0 * 1024.0 * 1000.0 / (double)t;
+        break;
+    }
+
+    appendLog(QString("%1: %2 ms, %3 bytes/s").arg(benchmarkName).arg(t).arg(bytesPerSec));
+
+    currentBenchmarkState = (BenchmarkState)((int)currentBenchmarkState + 1);
+
+    processBenchmark();
+}
+
+void MainWindow::processBenchmark()
+{
+    switch (currentBenchmarkState)
+    {
+    case BenchmarkFinish:
+        appendLog("benchmark complete!");
+    case BenchmarkStandby:
+        currentBenchmarkState = BenchmarkStandby;
+        return;
+    case BenchmarkError:
+        appendLog("benchmark error!");
+        return;
+
+    case BenchmarkDropboxUpload10kFromMemory: {
+        dropbox->upload(*random10kB, "/12345.txt");
+        break; }
+    case BenchmarkDropboxDownload10kFromMemory:
+        dropbox->download("/12345.txt");
+        break;
+    case BenchmarkDropboxDelete10kFromMemory:
+        //currentBenchmarkState = BenchmarkStandby;
+        dropbox->remove("/12345.txt");
+        break;
+    }
+
+    benchmarkWorkingTime->start();
+}
+
 void MainWindow::on_authDropbox_clicked()
 {
     ui->stateDropbox->setText("");
@@ -93,7 +168,5 @@ void MainWindow::on_authDropbox_clicked()
 
 void MainWindow::on_runBenchmark_clicked()
 {
-    QByteArray data;
-    data = QString("test").toUtf8();
-    dropbox->upload(data, "/12345.txt");
+    startBenchmark();
 }
