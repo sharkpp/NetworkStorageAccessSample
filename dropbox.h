@@ -37,14 +37,19 @@ public:
     // data download method
     bool download(const QString& path);
 
+    // data delete method
+    bool remove(const QString& path);
+
 signals:
     void authenticated();
     void uploaded(const QString& path);
     void downloaded(const QString& path, const QByteArray& data);
+    void removed(const QString& path);
 
 protected slots:
     void finishedUpload();
     void finishedDownload();
+    void finishedRemove();
 
 protected:
     QNetworkReply* post(const QUrl& url, const QVariant& postData, const QMap<QVariant, QString>& headers);

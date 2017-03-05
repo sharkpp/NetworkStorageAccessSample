@@ -20,13 +20,17 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(dropbox, &Dropbox::uploaded, [&](const QString& path) {
-        ui->log->setPlainText(ui->log->toPlainText() + QString("\n") + path);
-
+        appendLog(QString("Dropbox::uploaded >> \"%1\"").arg(path));
         dropbox->download("/12345.txt");
     });
 
     connect(dropbox, &Dropbox::downloaded, [&](const QString& path, const QByteArray& data) {
-        ui->log->setPlainText(ui->log->toPlainText() + QString("\n") + path + QString(" -> %1").arg(data.size()));
+        appendLog(QString("Dropbox::downloaded >> \"%1\" -> %2").arg(path).arg(data.size()));
+        dropbox->remove("/12345.txt");
+    });
+
+    connect(dropbox, &Dropbox::removed, [&](const QString& path) {
+        appendLog(QString("Dropbox::removed >> \"%1\"").arg(path));
     });
 
     tokensLoad();
@@ -66,6 +70,12 @@ void MainWindow::tokensSave()
     file.open(QIODevice::WriteOnly);
     QDataStream out(&file);
     out << tokenAndService;
+}
+
+void MainWindow::appendLog(const QString &newLog)
+{
+    const auto text = ui->log->toPlainText();
+    ui->log->setPlainText(text + QString(text.isEmpty() ? "%1" : "\n%1").arg(newLog));
 }
 
 void MainWindow::on_authDropbox_clicked()

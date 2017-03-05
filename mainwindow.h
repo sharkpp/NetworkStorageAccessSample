@@ -21,6 +21,8 @@ protected:
     void tokensLoad();
     void tokensSave();
 
+    void appendLog(const QString& newLog);
+
 private slots:
     void on_authDropbox_clicked();
     void on_runBenchmark_clicked();

@@ -175,9 +175,13 @@ QNetworkReply* Dropbox::post(const QUrl& url, const QVariant& postData, const QM
             "application/octet-stream");
         data = postData.value<QByteArray>();
     }
+    else if (postData.canConvert<QJsonObject>()) {
+        request.setHeader(QNetworkRequest::ContentTypeHeader,
+            "application/json");
+        QJsonObject json = postData.value<QJsonObject>();
+        data = QJsonDocument(json).toJson(QJsonDocument::Compact);
+    }
     else { // empty post data
-        //request.setHeader(QNetworkRequest::ContentTypeHeader,
-        //    "application/x-www-form-urlencoded");
     }
 
     qDebug() << request.rawHeaderList();
@@ -216,6 +220,7 @@ void Dropbox::setPinCode(const QString& code)
 
 bool Dropbox::upload(const QByteArray& data, const QString& path)
 {
+    // https://www.dropbox.com/developers/documentation/http/documentation#files-upload
     QUrl url("https://content.dropboxapi.com/2/files/upload");
 
     QJsonObject json;
@@ -269,6 +274,7 @@ void Dropbox::finishedUpload()
 
 bool Dropbox::download(const QString& path)
 {
+    // https://www.dropbox.com/developers/documentation/http/documentation#files-download
     QUrl url("https://content.dropboxapi.com/2/files/download");
 
     QJsonObject json;
@@ -317,3 +323,54 @@ void Dropbox::finishedDownload()
 
     Q_EMIT downloaded(path, contentData);
 }
+
+bool Dropbox::remove(const QString& path)
+{
+    // https://www.dropbox.com/developers/documentation/http/documentation#files-delete
+    QUrl url("https://api.dropboxapi.com/2/files/delete");
+
+    QJsonObject json;
+    json["path"] = path;
+
+    QMap<QVariant, QString> headers;
+
+    QNetworkReply *reply = post(url, json, headers);
+    connect(reply, &QNetworkReply::finished, std::bind(&QAbstractOAuth::finished, this, reply));
+    connect(reply, &QNetworkReply::finished, this, &Dropbox::finishedRemove);
+
+    return true;
+}
+
+void Dropbox::finishedRemove()
+{
+    auto reply = qobject_cast<QNetworkReply*>(sender());
+
+    qDebug() << "finishedRemove()";
+
+    QJsonParseError parseError;
+    const auto resultJson = reply->readAll();
+    const auto resultDoc = QJsonDocument::fromJson(resultJson, &parseError);
+    if (parseError.error) {
+        qDebug() << QString(resultJson);
+        qCritical() << "Dropbox::finishedRemove() Error at:" << parseError.offset
+                    << parseError.errorString();
+        return;
+    }
+    else if (!resultDoc.isObject()) {
+        qDebug() << QString(resultJson);
+        return;
+    }
+
+    const auto result = resultDoc.object();
+    if (!result.value("error_summary").isUndefined()) {
+        qDebug() << resultDoc.toJson();
+        return;
+    }
+
+    qDebug() << "****\n" << resultDoc.toJson();
+
+    const auto path = result.value("path_display").toString();
+
+    Q_EMIT removed(path);
+}
+
