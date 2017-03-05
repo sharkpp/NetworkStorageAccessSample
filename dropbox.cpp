@@ -175,6 +175,10 @@ QNetworkReply* Dropbox::post(const QUrl& url, const QVariant& postData, const QM
             "application/octet-stream");
         data = postData.value<QByteArray>();
     }
+    else { // empty post data
+        //request.setHeader(QNetworkRequest::ContentTypeHeader,
+        //    "application/x-www-form-urlencoded");
+    }
 
     qDebug() << request.rawHeaderList();
 
@@ -182,35 +186,22 @@ QNetworkReply* Dropbox::post(const QUrl& url, const QVariant& postData, const QM
     return reply;
 }
 
-void Dropbox::finishedUpload()
+const QString Dropbox::serialize() const
 {
-    auto reply = qobject_cast<QNetworkReply*>(sender());
-
-    QJsonParseError parseError;
-    const auto data = reply->readAll();
-    const auto document = QJsonDocument::fromJson(data, &parseError);
-    if (parseError.error) {
-        qDebug() << QString(data);
-        qCritical() << "TwitterTimelineModel::parseJson. Error at:" << parseError.offset
-                    << parseError.errorString();
-        return;
+    if (QAbstractOAuth::Status::Granted != status()) {
+        return "";
     }
-    else if (!document.isObject()) {
-        qDebug() << QString(data);
+    return token();
+}
+
+void Dropbox::deserialize(const QString& token)
+{
+    if (token.isEmpty()) {
         return;
     }
 
-    const auto object = document.object();
-    if (!object.value("error_summary").isUndefined()) {
-        qDebug() << document.toJson();
-        return;
-    }
-
-    qDebug() << "****" << document.toJson();
-
-    QString path = object.value("path_display").toString();
-
-    Q_EMIT uploaded(path);
+    setToken(token);
+    setStatus(QAbstractOAuth::Status::Granted);
 }
 
 void Dropbox::authenticate()
@@ -243,25 +234,86 @@ bool Dropbox::upload(const QByteArray& data, const QString& path)
     return true;
 }
 
-bool Dropbox::download(const QString& path)
+void Dropbox::finishedUpload()
 {
-    return false;
-}
+    auto reply = qobject_cast<QNetworkReply*>(sender());
 
-const QString Dropbox::serialize() const
-{
-    if (QAbstractOAuth::Status::Granted != status()) {
-        return "";
+    qDebug() << "finishedUpload()";
+
+    QJsonParseError parseError;
+    const auto resultJson = reply->readAll();
+    const auto resultDoc = QJsonDocument::fromJson(resultJson, &parseError);
+    if (parseError.error) {
+        qDebug() << QString(resultJson);
+        qCritical() << "Dropbox::finishedUpload() Error at:" << parseError.offset
+                    << parseError.errorString();
+        return;
     }
-    return token();
-}
-
-void Dropbox::deserialize(const QString& token)
-{
-    if (token.isEmpty()) {
+    else if (!resultDoc.isObject()) {
+        qDebug() << QString(resultJson);
         return;
     }
 
-    setToken(token);
-    setStatus(QAbstractOAuth::Status::Granted);
+    const auto result = resultDoc.object();
+    if (!result.value("error_summary").isUndefined()) {
+        qDebug() << resultDoc.toJson();
+        return;
+    }
+
+    qDebug() << "****\n" << resultDoc.toJson();
+
+    const auto path = result.value("path_display").toString();
+
+    Q_EMIT uploaded(path);
+}
+
+bool Dropbox::download(const QString& path)
+{
+    QUrl url("https://content.dropboxapi.com/2/files/download");
+
+    QJsonObject json;
+    json["path"] = path;
+
+    QMap<QVariant, QString> headers;
+    headers.insert("Dropbox-API-Arg", QJsonDocument(json).toJson(QJsonDocument::Compact));
+
+    QNetworkReply *reply = post(url, QVariant(), headers);
+    connect(reply, &QNetworkReply::finished, std::bind(&QAbstractOAuth::finished, this, reply));
+    connect(reply, &QNetworkReply::finished, this, &Dropbox::finishedDownload);
+
+    return true;
+}
+
+void Dropbox::finishedDownload()
+{
+    auto reply = qobject_cast<QNetworkReply*>(sender());
+
+    qDebug() << "finishedDownload()";
+
+    QJsonParseError parseError;
+    const auto resultJson = reply->rawHeader("Dropbox-API-Result");
+    const auto resultDoc = QJsonDocument::fromJson(resultJson, &parseError);
+    if (parseError.error) {
+        qDebug() << QString(resultJson);
+        qCritical() << "Dropbox::finishedDownload() Error at:" << parseError.offset
+                    << parseError.errorString();
+        return;
+    }
+    else if (!resultDoc.isObject()) {
+        qDebug() << QString(resultJson);
+        return;
+    }
+
+    const auto result = resultDoc.object();
+    if (!result.value("error_summary").isUndefined()) {
+        qDebug() << resultDoc.toJson();
+        return;
+    }
+
+    qDebug() << "****\n" << resultDoc.toJson();
+
+    const auto path = result.value("path_display").toString();
+    const auto contentData = reply->readAll();
+
+    Q_EMIT downloaded(path, contentData);
 }

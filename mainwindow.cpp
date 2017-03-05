@@ -20,7 +20,13 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(dropbox, &Dropbox::uploaded, [&](const QString& path) {
-        ui->log->setPlainText(ui->log->toPlainText() + QString("¥n") + path);
+        ui->log->setPlainText(ui->log->toPlainText() + QString("\n") + path);
+
+        dropbox->download("/12345.txt");
+    });
+
+    connect(dropbox, &Dropbox::downloaded, [&](const QString& path, const QByteArray& data) {
+        ui->log->setPlainText(ui->log->toPlainText() + QString("\n") + path + QString(" -> %1").arg(data.size()));
     });
 
     tokensLoad();
